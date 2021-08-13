@@ -1,0 +1,193 @@
+---
+title: "Reporte Errores Communes"
+author: "Equipo Análisis de Datos"
+date: "8/13/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, include=FALSE}
+library(tidyverse)
+library(PilasPack)
+library(lubridate)
+```
+
+```{r, echo=FALSE, include=FALSE }
+#Arregla esto#
+All_test <- testApiToDates(DataFrame = Datos_all)
+
+```
+
+```{r, echo=FALSE, include=FALSE}
+All_test <- testApiCalculateTurnaround(All_test)
+
+```
+
+```{r, echo=FALSE, include=FALSE}
+All_test <- testApiMonthAsColumn(All_test)
+
+```
+
+```{r}
+All_test <-All_test %>%
+  mutate(patient.birthDate = as.Date(ProssDirect$patient.birthDate, "%m/%d/%Y"))
+```
+
+
+```{r, echo=FALSE, include=FALSE}
+ProssDirect <-All_test %>% 
+  select(processedByEntity.name,orderedByEntity.name,orderResult.result, createdAtDate,sampleCollectedDate, orderResult.reportedDate ,testType, isElectronic, processedByEntity.city, TatReportSample, TatUploadReport, TatUploadSample, patient.firstName,patient.lastName, patient.contact.phoneNumber, patient.address.city, patient.birthDate, orderId, patient.patientId)%>%
+  add_column(Tags = "NA")%>%
+  mutate(Tags = as.character(Tags))
+
+ProssDirect
+  
+```
+
+```{r, echo=FALSE, include=FALSE}
+ for(i in 1:length(LabTags$Nombre)){
+     ProssDirect[ProssDirect$processedByEntity.name %in% LabTags[i,2],20] <- LabTags[i,4]
+ }
+
+ProssDirect[!(ProssDirect$processedByEntity.name %in% LabTags[,2]),20] <-"Other"
+
+ProssDirect
+```
+
+
+## Errores en Fecha de Muestreo
+
+```{r, echo=FALSE, include=FALSE}
+SampBefreFeb2020Molecular <-ProssDirect %>%
+  filter(sampleCollectedDate < ymd("2020-02-01"))%>%
+  filter(testType == "Molecular")
+```
+
+```{r, echo=FALSE, include=FALSE}
+SampBefreFeb2020Antigeno <-ProssDirect %>%
+  filter(sampleCollectedDate < ymd("2020-02-01"))%>%
+  filter(testType == "Antigens")
+```
+
+### Pruebas muestreadas antes del 01-02-2020
+
+```{r}
+# Verifica como cambiar los titulos de legenda
+
+SampBefreFeb2020Molecular %>%
+  group_by(orderedByEntity.name, processedByEntity.name, Tags, sampleCollectedDate)%>%
+  count()%>%
+  ggplot(aes(x = processedByEntity.name, y = orderedByEntity.name, fill = n))+
+  geom_tile()+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 90, size = 7, vjust = 0))+
+  labs(x = "Laboratorios de referencias", y = "Laboratorios clinicos", title = "Relación laboratorio: laboratorio fecha de muestreo",subtitle = "Pruebas moleculares")
+  
+```
+
+```{r}
+#PLiz optimize 4 color blind, thank you
+SampBefreFeb2020Molecular %>%
+  group_by(orderedByEntity.name, Tags, sampleCollectedDate)%>%
+  count()%>%
+  ggplot(aes(x= sampleCollectedDate, y = orderedByEntity.name, size = n, col = Tags))+
+  geom_point()+
+  theme_bw()+
+  labs(x = "Fecha de muestreo", y = "Laboratorio clinico", title = "Volumen de muestras por fecha", subtitle = "Pruebas moleculares")
+  
+  
+```
+```{r, include=FALSE}
+# Verifica como cambiar los titulos de legenda
+
+SampBefreFeb2020Antigeno %>%
+  group_by(orderedByEntity.name, processedByEntity.name, Tags, sampleCollectedDate)%>%
+  count()%>%
+  ggplot(aes(x = processedByEntity.name, y = orderedByEntity.name, fill = n))+
+  geom_tile()+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 90, size = 7, vjust = 0))+
+  labs(x = "Laboratorios de referencias", y = "Laboratorios clinicos", title = "Relación laboratorio: laboratorio fecha de muestreo",subtitle = "Pruebas de antigeno")
+  
+```
+
+```{r, include=FALSE}
+#PLiz optimize 4 color blind, thank you
+SampBefreFeb2020Antigeno %>%
+  group_by(orderedByEntity.name, Tags, sampleCollectedDate)%>%
+  count()%>%
+  ggplot(aes(x= sampleCollectedDate, y = orderedByEntity.name, size = n, col = Tags))+
+  geom_point()+
+  theme_bw()+
+  labs(x = "Fecha de muestreo", y = "Laboratorio clinico", title = "Volumen de muestras por fecha", subtitle = "Pruebas de antigeno")
+  
+  
+```
+
+### Fechas asociadas a nacimiento
+
+```{r}
+## Evaluar si te quedas con esto
+ProssDirect %>%
+  mutate(patient.birthDate = as.Date(ProssDirect$patient.birthDate, "%m/%d/%Y"))%>%
+  filter(year(patient.birthDate) < 1909)%>%
+  count()
+  
+  
+```
+
+```{r}
+## Evaluar si te quedas con esto
+test <- as.Date(ProssDirect$patient.birthDate, "%m/%d/%Y")
+sum(is.na(test))
+```
+
+```{r}
+# Averiguar sobre bebeces y covid en PR
+ProssDirect %>%
+  mutate(Diference = sampleCollectedDate - patient.birthDate)%>%
+  filter(abs(sampleCollectedDate - patient.birthDate)<=30) %>%
+  group_by(orderedByEntity.name, processedByEntity.name , Diference, testType)%>%
+  count()%>%
+  ggplot(aes(x = Diference, by = testType, fill = testType))+
+  geom_density()
+```
+
+
+```{r}
+ProssDirect %>%
+  mutate(Diference = sampleCollectedDate - patient.birthDate)%>%
+  filter(abs(sampleCollectedDate - patient.birthDate)<=30) %>%
+  group_by(orderedByEntity.name, processedByEntity.name , Diference, testType)%>%
+  count()%>%
+  ggplot(aes(x = Diference, by = testType, fill = testType))+
+  geom_histogram(bins = 30)+
+  scale_x_continuous(n.breaks = 10)+
+  scale_y_continuous(n.breaks = 10)+
+  theme_bw()+
+  labs(x = "Differencia", y = "Frecuencia", title = "Diferencias entre fecha de nacimiento y muestreo de prueba")
+
+```
+
+```{r}
+ProssDirect %>%
+  mutate(Diference = sampleCollectedDate - patient.birthDate)%>%
+  filter(abs(sampleCollectedDate - patient.birthDate)<=30) %>%
+  group_by(processedByEntity.name, Tags, Diference, testType)%>%
+  count()%>%
+  ggplot(aes(x= Diference, y = Tags, size = n, col = testType))+
+  geom_point()+
+  theme_bw()+
+  theme()+
+  labs(x = "Diferencia", y = "Laboratorio referencia", title = "Densidad de diferencia en fechas", subtitle = "Muestreo - Nacimiento")
+  
+```
+
+
+
+
+
+
