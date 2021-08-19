@@ -1,0 +1,177 @@
+---
+ title: "Reporte Errores Communes"
+ author: "Equipo Análisis de Datos"
+ date: "8/13/2021"
+ output: html_document
+ ---
+
+```{r}
+ knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+ library(tidyverse)
+ library(PilasPack)
+ library(lubridate)
+```
+
+```{r, echo=FALSE, include=FALSE }
+Datos_ALL <- testApiDownload("email", "pass", "2021-07-01", "2021-08-18")
+```
+
+```{r, echo=FALSE, include=FALSE }
+ #Arregla esto#
+ All_test <- testApiToDates(DataFrame = Datos_ALL)
+```
+
+```{r, echo=FALSE, include=FALSE}
+ All_test <- testApiCalculateTurnaround(All_test)
+```
+
+```{r, echo=FALSE, include=FALSE}
+ All_test <- testApiMonthAsColumn(All_test)
+```
+
+```{r, echo=FALSE, include=FALSE}
+ ProssDirect <-All_test %>% 
+   select(processedByEntity.name,orderedByEntity.name,orderResult.result, createdAtDate,sampleCollectedDate, orderResult.reportedDate ,testType, isElectronic, processedByEntity.city, TatReportSample, TatUploadReport, TatUploadSample, patient.firstName,patient.lastName, patient.contact.phoneNumber, patient.address.city, patient.birthDate, orderId, patient.patientId, )%>%
+   add_column(Tag = "NA")%>%
+   mutate(Tag = as.character(Tag))
+
+ ProssDirect
+   
+```
+
+
+```{r,echo=FALSE, include=FALSE}
+#añadir tag (dos col Tags y Tag verificar)
+ ProssDirect <- testApiAddTag(ProssDirect)
+```
+
+
+ ## Errores comunes en Fecha de Muestreo
+Se toma como fecha inicial de posible toma de muestra el 1 de febrero de 2020, todas las fechas de muestreo que se hayan realizado antes de esta fecha, están en el conjunto de fechas de muestreo improbables.
+```{r, echo=FALSE, include=FALSE}
+ SampBefreFeb2020Molecular <-ProssDirect %>%
+   filter(sampleCollectedDate < ymd("2020-02-01"))%>%
+   filter(testType == "Molecular")
+```
+
+```{r, echo=FALSE, include=FALSE}
+ SampBefreFeb2020Antigeno <-ProssDirect %>%
+   filter(sampleCollectedDate < ymd("2020-02-01"))%>%
+   filter(testType == "Antigens")
+```
+
+ ### Pruebas muestreadas antes del 01-02-2020
+Figura 1:
+```{r}
+ # Verifica como cambiar los titulos de legenda
+ SampBefreFeb2020Molecular %>%
+   group_by(orderedByEntity.name, processedByEntity.name, Tag, sampleCollectedDate)%>%
+   count()%>%
+   ggplot(aes(x = processedByEntity.name, y = orderedByEntity.name, fill = n))+
+   geom_tile()+
+   theme_bw()+
+   theme(axis.text.x = element_text(angle = 90, size = 7, vjust = 0))+
+   labs(x = "Laboratorios de referencias", y = "Laboratorios clinicos", title = "Relación laboratorio: laboratorio fecha de muestreo",subtitle = "Pruebas moleculares", fill = "cantidad")
+   
+```
+
+```{r}
+colors <- c("borinquen" = "blue", "LCVA" = "purple", "noy" = "green", "Other" = "orange", "toledo" = "red") 
+ #PLiz optimize 4 color blind, thank you
+ SampBefreFeb2020Molecular %>%
+   group_by(orderedByEntity.name, Tag, sampleCollectedDate)%>%
+   count()%>%
+   ggplot(aes(x= sampleCollectedDate, y = orderedByEntity.name, size = n, col = Tag))+
+   geom_point()+
+   theme_bw()+
+   labs(x = "Fecha de muestreo", y = "Laboratorio clinico", title = "Volumen de muestras por fecha", subtitle = "Pruebas moleculares") +
+   labs( size ="cantidad", col = "Laboratorios \n de referencia") +
+   scale_color_manual(values = colors) 
+   
+```
+
+```{r}
+ # Verifica como cambiar los titulos de legenda
+ SampBefreFeb2020Antigeno %>%
+   group_by(orderedByEntity.name, processedByEntity.name, Tag, sampleCollectedDate)%>%
+   count()%>%
+   ggplot(aes(x = processedByEntity.name, y = orderedByEntity.name, fill = n))+
+   geom_tile()+
+   theme_bw()+
+   theme(axis.text.x = element_text(angle = 90, size = 7, vjust = 0))+
+   labs(x = "Laboratorios de referencias", y = "Laboratorios clínicos", title = "Relación laboratorio: laboratorio fecha de muestreo",subtitle = "Pruebas de antigeno", fill = "cantidad")
+   
+```
+
+```{r}
+ #PLiz optimize 4 color blind, thank you
+ SampBefreFeb2020Antigeno %>%
+   group_by(orderedByEntity.name, Tag, sampleCollectedDate)%>%
+   count()%>%
+   ggplot(aes(x= sampleCollectedDate, y = orderedByEntity.name, size = n, col = Tag))+
+   geom_point()+
+   theme_bw()+
+   labs(x = "Fecha de muestreo", y = "Laboratorio clinico", title = "Volumen de muestras por fecha", subtitle = "Pruebas de antígeno", col = "Laboratorio de referencia", size = "cantidad")
+```
+
+ ### Fechas asociadas a nacimiento
+
+```{r}
+ ## Evaluar si te quedas con esto
+ ProssDirect %>%
+   mutate(patient.birthDate = as.Date(ProssDirect$patient.birthDate, "%m/%d/%Y"))%>%
+   filter(year(patient.birthDate) < 1909)%>%
+   count()
+```
+
+```{r}
+ test <- as.Date(ProssDirect$patient.birthDate, "%m/%d/%Y")
+ sum(is.na(test))
+```
+
+```{r}
+ # Averiguar sobre bebeces y covid en PR
+ ProssDirect %>%
+   mutate(Diference = sampleCollectedDate - patient.birthDate)%>%
+   filter(abs(sampleCollectedDate - patient.birthDate)<=30) %>%
+   group_by(orderedByEntity.name, processedByEntity.name , Diference, testType)%>%
+   count()%>%
+   ggplot(aes(x = Diference, by = testType, fill = testType))+
+   geom_density(alpha = 0.5) +
+   labs(fill = "tipo de prueba")
+```
+
+
+```{r}
+ ProssDirect %>%
+   mutate(Diference = sampleCollectedDate - patient.birthDate)%>%
+   filter(abs(sampleCollectedDate - patient.birthDate)<=30) %>%
+   group_by(orderedByEntity.name, processedByEntity.name , Diference, testType)%>%
+   count()%>%
+   ggplot(aes(x = Diference, by = testType, fill = testType))+
+   geom_histogram(bins = 30, alpha = 0.7)+
+   scale_x_continuous(n.breaks = 10)+
+   scale_y_continuous(n.breaks = 10)+
+   theme_bw()+
+   labs(x = "Differencia", y = "Frecuencia", title = "Diferencias entre fecha de nacimiento y muestreo de prueba", fill = "tipo de prueba")
+
+```
+
+```{r}
+ ProssDirect %>%
+   mutate(Diference = sampleCollectedDate - patient.birthDate)%>%
+   filter(abs(sampleCollectedDate - patient.birthDate)<=30) %>%
+   group_by(processedByEntity.name, Tag, Diference, testType)%>%
+   count()%>%
+   ggplot(aes(x= Diference, y = Tag, size = n, col = testType))+
+   geom_point(alpha = 1)+
+   theme_bw()+
+   theme()+
+   labs(x = "Diferencia en días", y = "Laboratorio referencia", title = "Densidad de diferencia en fechas", subtitle = "Muestreo - Nacimiento") +
+   labs(size = "densidad", col = "Tipo de prueba" )
+   
+```
